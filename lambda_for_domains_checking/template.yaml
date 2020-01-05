@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Checker for suspicious domains names
+
+
+Resources:
+
+############################
+########## Lambda ##########
+############################
+
+    DNSChecker:
+        Type: AWS::Serverless::Function
+        Properties:
+            CodeUri: s3://securityblog.cloud/cf_files/dns_checker.zip
+            Handler: lambda_function.lambda_handler
+            Runtime: python3.6
+            FunctionName: "dns_checker"
+            MemorySize: 256
+            Timeout: 300
+            Description:  Checker for suspicious domains names
+            Role: !GetAtt DNSCheckerRole.Arn
+            Environment:
+                Variables:
+                    domain_list:  "domains.txt"
+                    dns_servers: "8.8.8.8,8.8.4.4"
+                    sns_topic: ""
+
+
+    DNSCheckerPermisions:
+      Type : AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !GetAtt DNSChecker.Arn
+        Principal: "events.amazonaws.com"
+        SourceArn: !GetAtt DNSCheckerScheduler.Arn
+
+
+############################
+######## CloudWatch ########
+############################
+
+    DNSCheckerScheduler:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: DNSCheckerScheduler
+            Description: Rule invoke dns_checker lambda function
+            ScheduleExpression: cron(30 01 * * ? *)
+            State: ENABLED
+            Targets:
+                -
+                    Arn: !GetAtt
+                        - DNSChecker
+                        - Arn
+                    Id: DNSCheckerScheduler
+
+############################
+########### IAM ############
+############################
+
+    DNSCheckerRole:
+        Type: AWS::IAM::Role
+        Properties:
+            RoleName: DNSCheckerRole
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "lambda.amazonaws.com"
+                        Action:
+                            - "sts:AssumeRole"
+            Policies:
+                -
+                    PolicyName: "general"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                    - "sns:Publish"
+                                Resource:
+                                    - "*"
